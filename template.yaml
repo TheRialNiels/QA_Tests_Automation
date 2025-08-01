@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+    BuildFailureTopic:
+        Type: AWS::SNS::Topic
+        Properties:
+            DisplayName: 'Build Failure Notifications'
+            TopicName: qa-tests-automation
+
+    BuildProject:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: qa-tests-automation
+            Source:
+                Type: GITHUB
+                Location: https://github.com/TheRialNiels/QA_Test
+            Environment:
+                ComputeType: BUILD_GENERAL1_SMALL
+                Image: aws/codebuild/standard:6.0
+                Type: LINUX_CONTAINER
+            Artifacts:
+                Type: NO_ARTIFACTS
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+
+    CodeBuildRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                          Service: codebuild.amazonaws.com
+                      Action: sts:AssumeRole
+            Policies:
+                - PolicyName: CodeBuildPolicy
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - logs:*
+                                - sns:Publish
+                            Resource: '*'
+
+    BuildFailureAlarm:
+        Type: AWS::CloudWatch::Alarm
+        Properties:
+            AlarmDescription: 'Alarm when tests automation fails'
+            Namespace: AWS/CodeBuild
+            MetricName: FailedBuilds
+            Dimensions:
+                - Name: ProjectName
+                  Value: !Ref BuildProject
+            Statistic: Sum
+            Period: 300
+            EvaluationPeriods: 1
+            Threshold: 1
+            ComparisonOperator: GreaterThanOrEqualToThreshold
+            AlarmActions:
+                - !Ref BuildFailureTopic
