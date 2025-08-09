@@ -1,6 +1,35 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+    CodeStarConnectionSSMParameter:
+        Type: String
+        Default: /qa-tests-automation/codebuild/codestar-connection-arn
+        Description: SSM Parameter name that stores the CodeStar Connection ARN
+
 Resources:
+    ReportsBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: !Sub '${AWS::StackName}-qa-reports'
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: false
+                BlockPublicPolicy: false
+                IgnorePublicAcls: false
+                RestrictPublicBuckets: false
+
+    ReportsBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref ReportsBucket
+            PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                    - Effect: Allow
+                      Principal: '*'
+                      Action: s3:GetObject
+                      Resource: !Sub '${ReportsBucket.Arn}/*'
+
     BuildFailureTopic:
         Type: AWS::SNS::Topic
         Properties:
@@ -18,6 +47,11 @@ Resources:
                 ComputeType: BUILD_GENERAL1_SMALL
                 Image: aws/codebuild/standard:6.0
                 Type: LINUX_CONTAINER
+                EnvironmentVariables:
+                    - Name: REPORTS_BUCKET
+                      Value: !Ref ReportsBucket
+                    - Name: COMMAND
+                      Value: test.example
             Artifacts:
                 Type: NO_ARTIFACTS
             ServiceRole: !GetAtt CodeBuildRole.Arn
@@ -41,7 +75,16 @@ Resources:
                             Action:
                                 - logs:*
                                 - sns:Publish
-                            Resource: '*'
+                                - s3:PutObject
+                                - s3:PutObjectAcl
+                            Resource:
+                                - '*'
+                                - !Sub '${ReportsBucket.Arn}/*'
+                          - Effect: Allow
+                            Action:
+                                - codestar-connections:UseConnection
+                                - codestar-connections:GetConnectionToken
+                            Resource: !Sub '{{resolve:ssm:${CodeStarConnectionSSMParameter}:1}}'
 
     BuildFailureAlarm:
         Type: AWS::CloudWatch::Alarm
@@ -59,3 +102,8 @@ Resources:
             ComparisonOperator: GreaterThanOrEqualToThreshold
             AlarmActions:
                 - !Ref BuildFailureTopic
+
+Outputs:
+    ReportsBucketURL:
+        Description: 'Static website URL to access test reports'
+        Value: !Sub 'http://${ReportsBucket}.s3-website-${AWS::Region}.amazonaws.com'
