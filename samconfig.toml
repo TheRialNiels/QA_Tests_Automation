@@ -6,3 +6,4 @@ s3_prefix = "qa-test-automation"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
+parameter_overrides = "CodeStarConnectionSSMParameter=\"/qa-tests-automation/codebuild/codestar-connection-arn\""
