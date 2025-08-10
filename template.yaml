@@ -76,12 +76,9 @@ Resources:
 
                     detail = event['detail']
                     status = detail['build-status']
-                    build_number = detail['build-number']
+                    build_number = str(detail['additional-information']['build-number']).split('.')[0]
 
-                    message = f"""The tests was: {status}
-
-                    The report can be find in the following link:
-                    {os.environ['BUCKET_URL']}/reports/{build_number}/qa-report.html"""
+                    message = f"""The tests was: {status}\n\nThe report can be find in the following link:\n{os.environ['BUCKET_URL']}/reports/{build_number}/qa-report.html"""
 
                     sns.publish(
                         TopicArn=os.environ['SNS_TOPIC_ARN'],
