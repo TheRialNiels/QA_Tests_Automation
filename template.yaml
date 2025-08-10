@@ -11,7 +11,7 @@ Resources:
     ReportsBucket:
         Type: AWS::S3::Bucket
         Properties:
-            BucketName: !Sub '${AWS::StackName}-qa-reports'
+            BucketName: !Sub ${AWS::StackName}-qa-reports
             WebsiteConfiguration:
                 IndexDocument: index.html
             PublicAccessBlockConfiguration:
@@ -30,12 +30,12 @@ Resources:
                     - Effect: Allow
                       Principal: '*'
                       Action: s3:GetObject
-                      Resource: !Sub '${ReportsBucket.Arn}/*'
+                      Resource: !Sub ${ReportsBucket.Arn}/*
 
     BuildNotificationsTopic:
         Type: AWS::SNS::Topic
         Properties:
-            DisplayName: 'Build Notifications'
+            DisplayName: Build Notifications
             TopicName: qa-tests-automation
 
     NotificationFunction:
@@ -47,20 +47,25 @@ Resources:
             Environment:
                 Variables:
                     SNS_TOPIC_ARN: !Ref BuildNotificationsTopic
-                    BUCKET_URL: !Sub 'http://${ReportsBucket}.s3-website-${AWS::Region}.amazonaws.com'
+                    BUCKET_URL: !Sub http://${ReportsBucket}.s3-website-${AWS::Region}.amazonaws.com
             Policies:
                 - SNSPublishMessagePolicy:
-                    TopicName: !GetAtt BuildNotificationsTopic.TopicName
+                      TopicName: !GetAtt BuildNotificationsTopic.TopicName
             Events:
                 CodeBuildStateChange:
                     Type: EventBridgeRule
                     Properties:
                         Pattern:
-                            source: ["aws.codebuild"]
-                            detail-type: ["CodeBuild Build State Change"]
+                            source:
+                                - aws.codebuild
+                            detail-type:
+                                - CodeBuild Build State Change
                             detail:
-                                build-status: ["SUCCEEDED", "FAILED"]
-                                project-name: [!Ref BuildProject]
+                                build-status:
+                                    - SUCCEEDED
+                                    - FAILED
+                                project-name:
+                                    - !Ref BuildProject
             InlineCode: |
                 import json
                 import boto3
@@ -71,12 +76,12 @@ Resources:
 
                     detail = event['detail']
                     status = detail['build-status']
-                    build_id = detail['build-id'].split('/')[-1]
+                    build_number = detail['build-number']
 
                     message = f"""The tests was: {status}
 
-                The report can be find in the following link:
-                {os.environ['BUCKET_URL']}/reports/{build_id}/qa-report.html"""
+                    The report can be find in the following link:
+                    {os.environ['BUCKET_URL']}/reports/{build_number}/qa-report.html"""
 
                     sns.publish(
                         TopicArn=os.environ['SNS_TOPIC_ARN'],
@@ -128,7 +133,7 @@ Resources:
                                 - s3:PutObjectAcl
                             Resource:
                                 - '*'
-                                - !Sub '${ReportsBucket.Arn}/*'
+                                - !Sub ${ReportsBucket.Arn}/*
                           - Effect: Allow
                             Action:
                                 - codestar-connections:UseConnection
@@ -137,5 +142,5 @@ Resources:
 
 Outputs:
     ReportsBucketURL:
-        Description: 'Static website URL to access test reports'
-        Value: !Sub 'http://${ReportsBucket}.s3-website-${AWS::Region}.amazonaws.com'
+        Description: Static website URL to access test reports
+        Value: !Sub http://${ReportsBucket}.s3-website-${AWS::Region}.amazonaws.com
