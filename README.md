@@ -82,25 +82,68 @@ Add this step to your GitHub Actions workflow:
 
 ```yaml
 - name: Run QA tests
-  run: |
-      BUILD_ID=$(aws codebuild start-build \
+id: qa-tests
+continue-on-error: true
+run: |
+    BUILD_ID=$(aws codebuild start-build \
         --project-name qa-tests-automation \
-        --environment-variables-override name=COMMAND,value=test.example \
+        --environment-variables-override name=COMMAND,value=<testCommand> \
         --query 'build.id' --output text)
 
-      # Wait for completion and handle results
-      while true; do
+    echo "Started CodeBuild: $BUILD_ID"
+
+    # Wait for build to complete
+    while true; do
         STATUS=$(aws codebuild batch-get-builds --ids $BUILD_ID \
-          --query 'builds[0].buildStatus' --output text)
+        --query 'builds[0].buildStatus' --output text)
+
+        echo "Build status: $STATUS"
 
         if [ "$STATUS" = "SUCCEEDED" ]; then
-          break
-        elif [ "$STATUS" = "FAILED" ]; then
-          exit 1
+        echo "QA tests passed!"
+        break
+        elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "TIMED_OUT" ]; then
+        echo "QA tests failed with status: $STATUS"
+        exit 1
         fi
+
         sleep 30
-      done
+    done
+
+- name: Get QA team approvers
+if: steps.qa-tests.outcome == 'failure'
+id: qa-approvers
+run: |
+    if [ -f .github/CODEOWNERS ]; then
+        # Extract usernames from lines containing qa-team
+        QA_APPROVERS=$(awk '/qa-team/{getline; if($0 ~ /@/) print $0}' .github/CODEOWNERS | grep -o '@[^[:space:]]*' | sed 's/@//' | tr '\n' ',' | sed 's/,$//')
+        echo "approvers=${QA_APPROVERS:-${{ github.repository_owner }}}" >> $GITHUB_OUTPUT
+    else
+        echo "approvers=${{ github.repository_owner }}" >> $GITHUB_OUTPUT
+    fi
+
+- name: Manual approval for QA test failure
+if: steps.qa-tests.outcome == 'failure'
+uses: trstringer/manual-approval@v1
+with:
+    secret: ${{ secrets.GITHUB_TOKEN }}
+    approvers: ${{ steps.qa-approvers.outputs.approvers }}
+    minimum-approvals: 1
+    issue-title: 'QA Tests Failed - Manual Approval Required'
+    issue-body: |
+        QA tests failed for staging deployment.
+
+        Please review the test results and approve if this is a false positive.
+
+        **Commit:** ${{ github.sha }}
+        **Branch:** ${{ github.ref_name }}
+        **Actor:** ${{ github.actor }}
 ```
+
+> [!IMPORTANT]
+> Modify the test command that will be executed. It is located in the following line:
+>
+> `--environment-variables-override name=COMMAND,value=<testCommand> \`
 
 ## Usage
 
